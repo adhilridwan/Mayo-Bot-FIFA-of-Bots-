@@ -1,0 +1,16 @@
+{
+  "model_type": "mayo_shot_blast",
+  "team": "Shawarma",
+  "bot": "Mayo",
+  "version": "1",
+  "tuning_parameters": {
+    "goal_clearance_margin": 0.5,
+    "risky_shot_margin_cutoff": -2.0,
+    "max_direct_shot_distance": 44.0,
+    "safe_dribble_opp_dist": 7.0,
+    "min_pass_lead_steps": 1.5,
+    "midfield_press_threshold": 42.0,
+    "midfield_press_cushion_max": 10.0,
+    "midfield_press_cushion_min": 7.0
+  }
+}

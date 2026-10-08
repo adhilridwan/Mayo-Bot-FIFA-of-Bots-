@@ -1,0 +1,11 @@
+{
+  "name": "Mayo Bot",
+  "version": "1",
+  "command": [
+    "python",
+    "-m",
+    "team_bot.bot",
+    "--model",
+    "team_bot/models/policy.json"
+  ]
+}
