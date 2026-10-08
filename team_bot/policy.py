@@ -28,7 +28,7 @@ except (ImportError, ValueError):
         from search import DefensiveSearch
         from shot_planner import ShotPlanner
 
-# ── Geometric Primitives & Simulation Configuration ──────────────────────
+
 
 DIRECTIONS: dict[str, tuple[float, float]] = {
     "STAY": (0.0, 0.0),
@@ -138,7 +138,7 @@ def simulate_trajectory(
                 conceded = True
                 break
 
-            # Wall bounces
+            
             if b_cur_x - ball_radius < 0:
                 b_vx = abs(b_vx); b_cur_x = ball_radius
             elif b_cur_x + ball_radius > field_w:
@@ -148,7 +148,7 @@ def simulate_trajectory(
             elif b_cur_y + ball_radius > field_h and not (goal_left <= b_cur_x <= goal_right):
                 b_vy = -abs(b_vy); b_cur_y = field_h - ball_radius
 
-            # Obstacle bounces
+            
             for obs in obstacles:
                 cx = min(max(b_cur_x, obs.x), obs.x + obs.width)
                 cy = min(max(b_cur_y, obs.y), obs.y + obs.height)
@@ -197,7 +197,6 @@ def _is_move_safe(
     if ny - player_radius < 0 or ny + player_radius > field_h:
         return False
 
-    # Tangential obstacle clearance: tightened to 0.08 for maximum corridor maneuverability
     for obs in obstacles:
         cx = min(max(nx, obs.x), obs.x + obs.width)
         cy = min(max(ny, obs.y), obs.y + obs.height)
@@ -500,7 +499,6 @@ class Policy:
         opp_dist = math.hypot(ox - mx, oy - my)
         is_p1 = (my_id == "player_1")
 
-        # Step 6 Item 3: Track loose-ball best distance
         if possession is not None or brem > 0.0:
             self._loose_ball_best_dist = None
         else:
@@ -508,7 +506,6 @@ class Policy:
             if self._loose_ball_best_dist is None or closest_d < self._loose_ball_best_dist - 0.25:
                 self._loose_ball_best_dist = closest_d
 
-        # ── Tactical State Machine ──
         iteration = int(st.get("iteration", 0))
         if iteration <= 1 or iteration < self._last_iter:
             self._sig.clear()
@@ -589,7 +586,6 @@ class Policy:
             risky_shot_cutoff = float(self.params.get("risky_shot_margin_cutoff", -2.0))
             min_pass_lead = float(self.params.get("min_pass_lead_steps", 1.5))
 
-        # ── 1. WITH BALL POSSESSION ────────────────────────────────────────
         if possession == my_id:
             guaranteed_kicks: list[tuple[int, int, dict[str, Any]]] = []
             candidate_scoring_kicks: list[tuple[float, int, int, dict[str, Any]]] = []
@@ -630,7 +626,6 @@ class Policy:
 
                 act = {"move": mv_name, "kick": {"direction": kdir, "power": power}}
 
-                # ── 1.5-Ply Adversarial Minimax over all 9 Opponent Responses ──
                 worst_opp_margin = 999.0
                 any_opp_intercepts = False
                 worst_lead_margin = 999.0
@@ -644,11 +639,9 @@ class Policy:
                     else:
                         nox, noy = ox, oy
 
-                    # Step 1 Interception check:
                     step1_intercept = False
                     x1, y1, _ = trajectory[0]
 
-                    # Temporal check: ball travel vs opponent travel to ray
                     if _ray_hits_circle(p_new_x, p_new_y, kux, kuy, 11.5, nox, noy, pradius + bradius + 0.15):
                         proj = (nox - p_new_x) * kux + (noy - p_new_y) * kuy
                         t_ball = max(0.05, proj / bspeed)
@@ -665,7 +658,6 @@ class Policy:
                         worst_opp_margin = min(worst_opp_margin, -999.0)
                         continue
 
-                    # Subsequent steps t >= 2
                     for bx_t, by_t, step_i in trajectory:
                         dist_opp_to_pt = math.hypot(nox - bx_t, noy - by_t)
                         reach_dist = (step_i - 1) * pspeed + pradius + bradius
@@ -679,7 +671,6 @@ class Policy:
                     if om_min_margin < worst_opp_margin:
                         worst_opp_margin = om_min_margin
 
-                    # Self-pass arrival lead for this opponent move
                     land_x, land_y, _ = trajectory[-1]
                     dist_opp_to_land = math.hypot(nox - land_x, noy - land_y)
                     t_opp_land = 1.0 + dist_opp_to_land / pspeed
@@ -720,14 +711,12 @@ class Policy:
                             candidate_self_passes.append((pass_score, act))
                 return False
 
-            # Phase 1: Fast-path evaluation of aligned kicks (24 combinations)
             for kdir in KICK_DIRS:
                 pref_move = kdir if kdir in MOVES else attack
                 m_aligned = _best_safe_move(mx, my, pref_move, fw, fh, pradius, pspeed, obstacles)
                 for power in (1, 2, 3):
                     evaluate_action(m_aligned, kdir, power)
 
-            # Phase 2: Decoupled 216-Action Search (evaluates sidestep curling shots if no direct instant goal)
             if not guaranteed_kicks:
                 for mv_name in safe_moves:
                     for kdir in KICK_DIRS:
@@ -736,12 +725,10 @@ class Policy:
                         for power in (1, 2, 3):
                             evaluate_action(mv_name, kdir, power)
 
-            # Priority 1: Guaranteed scoring kick
             if guaranteed_kicks:
                 guaranteed_kicks.sort(key=lambda item: (item[0], item[1]))
                 return guaranteed_kicks[0][2]
 
-            # Phase 3 / Section 4.4: Exact-physics ShotPlanner guaranteed shot
             if self.params.get("flag_shot_planner", True) and self._shot_planner:
                 try:
                     fast_st = self._fast_sim.from_env_observation(
@@ -755,7 +742,6 @@ class Policy:
                 except Exception as err:
                     _record_error(err)
 
-            # Priority 2: Candidate scoring kick when in shooting range
             dist_to_opp_goal = fh - my if sign > 0 else my
             if dist_to_opp_goal <= max_shot_dist and candidate_scoring_kicks:
                 candidate_scoring_kicks.sort(key=lambda item: (-item[0], item[1]))
@@ -767,7 +753,6 @@ class Policy:
                 if best_cand is not None and best_cand[0] > risky_shot_cutoff:
                     return self._sig_mark(best_cand[3], mx, my)
 
-            # Priority 3: Dribble path evaluation
             fwd_moves = [attack, f"{attack}_LEFT", f"{attack}_RIGHT", "LEFT", "RIGHT"]
             safe_fwd = [m for m in fwd_moves if _is_move_safe(mx, my, m, fw, fh, pradius, pspeed, obstacles)]
             opp_ahead = (sign * (oy - my) > 0 and abs(ox - mx) < 14.0 and opp_dist < 35.0)
@@ -792,12 +777,10 @@ class Policy:
                     best_dribble = m
             self._last_best = best_dribble
 
-            # Priority 4: Safe Open-Field Carry / Evasion Dribble
             can_carry = (pstep < 2 or opp_dist > self.params.get("safe_dribble_opp_dist", 7.0)) and pstep < 8
             if can_carry and not opp_ahead and best_dribble != "STAY":
                 return {"move": best_dribble}
 
-            # Priority 5: 2-Ply Kick-and-Chase (Self-Pass) when obstructed or pressured
             if candidate_self_passes:
                 candidate_self_passes.sort(key=lambda item: -item[0])
                 best_pass_score, best_pass_act = candidate_self_passes[0]
@@ -810,11 +793,9 @@ class Policy:
                 if best_pass_act is not None and (opp_ahead or opp_dist <= 10.0 or pstep >= 7):
                     return self._sig_mark(best_pass_act, mx, my)
 
-            # Carry with evasion if possible
             if can_carry and best_dribble != "STAY":
                 return {"move": best_dribble}
 
-            # Priority 6: Pressure Clearance
             best_clear = None
             best_clear_score = -99999.0
 
@@ -871,7 +852,7 @@ class Policy:
                 mx, my, fw, fh, sign, attack, best_dribble, pradius, pspeed, obstacles, observation
             )
 
-        # ── 2. WITHOUT BALL POSSESSION ─────────────────────────────────────
+       
         if possession == opp_id:
             caught_upfield = (sign > 0 and my >= oy) or (sign < 0 and my <= oy)
             stuck_def = self._dstuck >= 10
@@ -895,9 +876,7 @@ class Policy:
                     self._dstuck = 0
                 return {"move": _best_safe_move(mx, my, _direction_toward(_bx - mx, _by - my), fw, fh, pradius, pspeed, obstacles)}
 
-            # Tactical defending behavior based on state machine
             if mode in ("LOSING_LATE", "TIED_LATE") and pstep >= 2:
-                # Early aggressive pressing to force tackle turnovers!
                 target_x = ox + ux * 2.5
                 target_y = oy + uy * 2.5
             elif pstep >= 8:
@@ -921,7 +900,6 @@ class Policy:
                 fw, fh, pradius, pspeed, obstacles
             )
 
-            # Phase 3: Defensive joint-action minimax search with failsafe heuristic fallback
             if self.params.get("flag_defensive_search", True) and self._def_searcher:
                 try:
                     fast_st = self._fast_sim.from_env_observation(
@@ -947,14 +925,11 @@ class Policy:
 
             return def_act
 
-        # ── 3. LOOSE BALL INTERCEPTION ────────────────────────────────────
         loose_steps = int(ball.get("loose_ball_steps", 0))
         dist_me_ball = math.hypot(mx - bx, my - by)
         dist_opp_ball = math.hypot(ox - bx, oy - by)
 
-        # Late-Game Defensive Shape Management:
-        # When protecting a lead late in the match and the loose ball is deep in the opponent half
-        # while the opponent is distant, maintain disciplined goal-side defensive positioning.
+
         if mode == "WINNING_LATE" and (sign * (by - fh / 2.0) > 10.0) and dist_opp_ball > 20.0:
             tx = 50.0
             ty = my_goal_y + sign * 25.0
@@ -965,18 +940,15 @@ class Policy:
                 )
             }
 
-        # Deterministic Player-Priority Arrival Modeling:
-        # Accounts for the engine's resolution order favoring Player 1 on exact distance/contact ties.
+       
         t_me = dist_me_ball / pspeed
         t_opp = dist_opp_ball / pspeed
 
         should_retreat = False
         if is_p1:
-            # Player 1 wins ties; contest 50/50 loose balls, retreat only if opponent is ahead by > 0.6 steps
             if t_opp + 0.6 < t_me:
                 should_retreat = True
         else:
-            # Player 2 loose-ball rule: contest unless opponent is ahead by > 0.8 steps
             if t_opp + 0.8 < t_me:
                 should_retreat = True
 
